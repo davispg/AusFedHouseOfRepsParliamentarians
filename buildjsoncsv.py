@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup
 
 import urllib3.contrib.pyopenssl, json, csv, certifi
 
+
 #some control variables - Set the save-to appropriately
 SAVETO = 'c:\\temp\\'
 
@@ -31,6 +32,7 @@ govts=[]
 if buildWiki:
     # the top Wiki page
     wikiURL = "https://en.wikipedia.org/wiki/Members_of_the_Australian_House_of_Representatives,_1901-1903"
+
     
     # function to extract the proper "full" name for the person
     # Expand to include () data (birth date) later. !!!!!!!!!
@@ -39,7 +41,7 @@ if buildWiki:
         for p in tP:
             try:
                 if p.parent.name != 'td': 
-                    sR = p.find("b").text
+                    sR = p.find("b").decode()
                     break
             except:
                 sR=""
@@ -86,7 +88,7 @@ if buildWiki:
                     mname = checkPersonWikiUrl(r.find('td').a['href'])
                     if mname == None: mname=getWikiName("http://en.wikipedia.org" + r.find('td').a['href'])
                     
-                    #print(f'{mname.encode("utf-8")} at {str(datetime.datetime.now())}')
+                    #print(f'{str(mname)} at {str(datetime.datetime.now())}')
 
                     namecheck.append(mname)
                     
@@ -128,7 +130,7 @@ if buildWiki:
 
     #write out the members so far to file - bast case everything written to file
     try:
-        with open(SAVETO + 'members.json','w') as outfile:
+        with open(SAVETO + 'members.json','w',encoding='utf-8') as outfile:
             json.dump(members, outfile)
     except:
         print('Error writing to file')   
@@ -136,7 +138,7 @@ else:
     
     print('Load existing file - will error if not present')
     try:
-        with open(SAVETO + 'members.json','r') as infile:
+        with open(SAVETO + 'members.json','r', encoding='utf-8') as infile:
             members=json.load(infile)
     except:
         print('Creating file Mapped')
@@ -144,28 +146,30 @@ else:
 if buildCSV:
     #build the header row
     headerrow = ['Name', 'WikiURL']
-    i=1
+    i=PARLIAMENT_FIRST
     BLANK=u''
     while i <= PARLIAMENT_LAST:
         headerrow.append('P'+str(i)+'Parliament')
         headerrow.append('P'+str(i)+'Party')
         headerrow.append('P'+str(i)+'Electorate')
         i=i+1
-        
-    with open(SAVETO + 'members.csv', 'w') as f:
+
+    with open(SAVETO + 'members.csv', 'w', encoding='utf-8', newline='\n') as f:
         wr = csv.writer(f)
         wr.writerow(headerrow)
         for item in members:    
-            r = [members[item]['Name'].encode('ascii'),members[item]['WikiURL'].encode('ascii')]
-            i=1
+            r = [members[item]['Name'],members[item]['WikiURL']]
+            i=PARLIAMENT_FIRST
             while i <= PARLIAMENT_LAST:
-                if str(i) in members[item]['Represented']:
+                if i in members[item]['Represented']:
                     r.append(i)
-                    r.append(members[item]['Party'][str(i)].encode('ascii'))
-                    if '\\u' in members[item]['Represented'][str(i)].encode('unicode-escape'):
-                        r.append(members[item]['Represented'][str(i)].encode('unicode-escape')[0:len(members[item]['Represented'][str(i)].encode('unicode-escape'))-5])
-                    else:
-                        r.append(members[item]['Represented'][str(i)].encode('ascii'))
+                    r.append(members[item]['Party'][i])
+                    r.append(members[item]['Represented'][i])
+    
+                    #if '\\u' in members[item]['Represented'][i].encode('unicode-escape'):
+                    #    r.append(members[item]['Represented'][i].encode('unicode-escape')[0:len(members[item]['Represented'][i].encode('unicode-escape'))-5])
+                    #else:
+                    #    r.append(members[item]['Represented'][i])
                 else:
                     r.append(BLANK)
                     r.append(BLANK)

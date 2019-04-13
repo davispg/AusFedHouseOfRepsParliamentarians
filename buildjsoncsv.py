@@ -1,28 +1,36 @@
 #This script builds an index of the Australian Federal parliaments since Federation.
 #It will iterate through wikipedia tables, building a JSON, and a CSV.
+# Originally developed in 2014 this has been updated in 2019 to take into account HTTPs and changes to wikipedia structures
+
 
 # Load dependencies
 from bs4 import BeautifulSoup
-import re, urllib3, json, datetime, csv
+
+import urllib3.contrib.pyopenssl, json, csv, certifi
 
 #some control variables - Set the save-to appropriately
-SAVETO = "/home/pauldavis/Documents/"
+SAVETO = 'c:\\temp\\'
+
 #adjust these two to limit the build.
 PARLIAMENT_FIRST = 1
-PARLIAMENT_LAST = 44
+PARLIAMENT_LAST = 45
 
 #some procedure switches
 buildWiki = True
 buildCSV = True
+bGovtList = False
 
 #initialise
-http = urllib3.PoolManager()
+urllib3.contrib.pyopenssl.inject_into_urllib3()                                 # accomodate SSL everywhere
+http = urllib3.PoolManager(cert_reqs='CERT_REQUIRED', ca_certs=certifi.where()) # SSL
 namecheck=[]
 members={}
+govts=[]
+
 
 if buildWiki:
     # the top Wiki page
-    wikiURL = "http://en.wikipedia.org/wiki/Members_of_the_Australian_House_of_Representatives,_1901–1903"
+    wikiURL = "https://en.wikipedia.org/wiki/Members_of_the_Australian_House_of_Representatives,_1901-1903"
     
     # function to extract the proper "full" name for the person
     # Expand to include () data (birth date) later. !!!!!!!!!
@@ -30,7 +38,7 @@ if buildWiki:
         tP = BeautifulSoup(http.urlopen('GET',wURL).data,"html.parser").find(class_="mw-content-ltr").find_all("p")
         for p in tP:
             try:
-                if p.parent.name <> 'td': 
+                if p.parent.name != 'td': 
                     sR = p.find("b").text
                     break
             except:
@@ -53,8 +61,18 @@ if buildWiki:
         i=PARLIAMENT_FIRST
         fserved=""
         while i <= PARLIAMENT_LAST:
-            print "Parliament " + str(i) + " opening " + wikiURL
+            print(f'Parliament {str(i)} opening {wikiURL}')
             soup = BeautifulSoup(http.urlopen('GET',wikiURL).data,"html.parser")
+            
+            #build index of governments - only once
+            if not(bGovtList):
+                
+                lis = soup.find(class_="navbox-list navbox-odd").findAll('li')
+                for li in lis:
+                    try: govts.append(li.find('a')['href'])
+                    except: print('self referencing line')          
+                bGovtList = True
+                
             #get the table of members
             try:
                 p = soup.find(class_="wikitable sortable").find_all('tr')
@@ -68,7 +86,7 @@ if buildWiki:
                     mname = checkPersonWikiUrl(r.find('td').a['href'])
                     if mname == None: mname=getWikiName("http://en.wikipedia.org" + r.find('td').a['href'])
                     
-                    print mname + " at " + str(datetime.datetime.now())
+                    #print(f'{mname.encode("utf-8")} at {str(datetime.datetime.now())}')
 
                     namecheck.append(mname)
                     
@@ -101,32 +119,27 @@ if buildWiki:
                                 'WikiURL':r.find_next('td').a['href']
                             }
                             
-            # now jump to the next page
-            toc = soup.find(class_="toccolours")
-            if i==1:
-                wikiURL="http://en.wikipedia.org" + toc.find_next('td').find_next('td').find_next('a').find_next('a')['href']
-            else:
-                wikiURL="http://en.wikipedia.org" + toc.find_next('td').find_next('td').find_next('a').find_next('a').find_next('a')['href']
-            i=i+1
-                    
+            
+            i=i+1                                                 # go to the next page
+            wikiURL = "https://en.wikipedia.org" + govts[i-2]     # note the first govt is not in the index - so i-2
+            
     except:
-        print "Error loading page"
+        print('Error loading page' + wikiURL)
 
     #write out the members so far to file - bast case everything written to file
     try:
         with open(SAVETO + 'members.json','w') as outfile:
             json.dump(members, outfile)
     except:
-        print "error writing to file"   
-
+        print('Error writing to file')   
 else:
     
-    print "Load existing file - will error if not present"
+    print('Load existing file - will error if not present')
     try:
         with open(SAVETO + 'members.json','r') as infile:
             members=json.load(infile)
     except:
-        print "Creating file Mapped"
+        print('Creating file Mapped')
 
 if buildCSV:
     #build the header row
@@ -145,7 +158,7 @@ if buildCSV:
         for item in members:    
             r = [members[item]['Name'].encode('ascii'),members[item]['WikiURL'].encode('ascii')]
             i=1
-            while i < PARLIAMENT_LAST:
+            while i <= PARLIAMENT_LAST:
                 if str(i) in members[item]['Represented']:
                     r.append(i)
                     r.append(members[item]['Party'][str(i)].encode('ascii'))
